@@ -8,6 +8,7 @@ import struct
 import threading
 import random
 import time
+import math
 
 
 class CacheNotFound(Exception):
@@ -41,6 +42,11 @@ class Cache(object):
         self.items[key] = (datetime.now() + timedelta(seconds=self._timeout), value)
 
 
+
+def make_pattern(pattern, length):
+    return str(pattern * int(math.ceil(length / float(len(pattern)))))[:length]
+
+
 class PingServer(threading.Thread):
     def __init__(self, ip_version=4, bindaddr=None):
         threading.Thread.__init__(self)
@@ -53,29 +59,40 @@ class PingServer(threading.Thread):
         self._sock = None
         self._bindaddr = bindaddr
         self._mtu = 1508
+        self._packet_size = 128
+        self._pattern = "A"
         self._create_socket()
         self._stop = False
-        self._packets = {} # destination, id, sequence number table
+        self._ids = {}
+        self._seqs = {}
+        self._sent_packets = {}
+        self._results = {}
+        self._pongs = []
         self._cache = Cache()
 
     def _get_next(self, destination):
-        if destination not in self._packets:
-            self._packets[destination] = []
-            next = [random.randint(0,65545), 0, 0]
+        if destination not in self._ids:
+            # Select unique id
+            id = random.choice([i for i in range(1,65535) if i not in self._ids.keys()])
+            self._ids[destination] = id
+        id = self._ids[destination]
+        if id not in self._seqs:
+            self._seqs[id] = []
+            seq = 1
         else:
-            next = list(self._packets[destination][-1])
-            next[1] += 1
-            if (next[1] > 32767):
-                # Wrap seq around
-                next[1] = -32767
-            next[2] = 0
-        self._packets[destination].append(next)
-        return next
+            seq = self._seqs[id][-1] + 1
+        self._seqs[id].append(seq)
+        return (id, seq)
 
     def _get_current(self, destination):
-        if destination not in self._packets:
+        if destination not in self._ids:
             return None
-        return self._packets[destination][-1]
+        id = self._ids[destination]
+        if id not in self._seqs:
+            return None
+        else:
+            seq = self._seqs[id][-1]
+        return (id, seq)
 
     def _get_checksum(self, string):
         # From ping.c in_cksum function
@@ -104,7 +121,7 @@ class PingServer(threading.Thread):
         # http://en.wikipedia.org/wiki/Internet_Control_Message_Protocol
         # Checksum is calculated with 0 as checksum
         header = struct.pack('bbHHh', 8, 0, 0, id, seq)
-        data = 128 * 'Q'
+        data = make_pattern(self._pattern, self._packet_size)
         chksum = self._get_checksum(header + data)
         header = struct.pack('bbHHh', 8, 0, socket.htons(chksum), id, seq)
         return header + data
@@ -158,12 +175,15 @@ class PingServer(threading.Thread):
         :param destination:
         :return: packet sequence number
         """
-        x = self._get_next(ip)
-        packet = self._pack_packet(x[0], x[1])
+        id, seq = self._get_next(ip)
+        packet = self._pack_packet(id, seq)
         t = datetime.now()
         self._sock.sendto(packet, (ip, 1))
-        x[2] = t
-        return x[1]
+        self._sent_packets[(ip, id, seq)] = t
+        if ip not in self._results:
+            self._results[ip] = {}
+        self._results[ip][t] = None
+        return seq
 
     def ping(self, destination, timeout=5):
         """
@@ -176,28 +196,33 @@ class PingServer(threading.Thread):
         self._send(ip)
         return None
 
-    def run(self):
-        while not self._stop:
-            data, addr_port = self._sock.recvfrom(self._mtu)
-            addr = addr_port[0]
-            t = datetime.now()
+    def _prosess_pongs(self):
+        while len(self._pongs) > 0:
+            pong = self._pongs.pop()
+            addr, data, recv_time = pong
+            if addr not in self._results:
+                continue
             try:
                 x = self._unpack_packet(data)
-                if addr in self._packets:
-                    for p in self._packets[addr]:
-                        if p[0] != x['id']:
-                            break
-                        if p[1] == x['seq']:
-                            diff = t - p[2]
-                            x['time'] = ((diff.seconds * 1000000.0) + diff.microseconds) / 1000.0
+                identifier = (addr, x['id'], x['seq'])
+                if identifier in self._sent_packets:
+                    sent_time =  self._sent_packets[identifier]
+                    diff = recv_time - sent_time
+                    self._results[addr][sent_time] = ((diff.seconds * 1000000.0) + diff.microseconds) / 1000.0
                 else:
                     continue
                 del x['data']
+                x['time'] = self._results[addr][sent_time]
                 print("%s: %s" % (addr, x))
             except InvalidPacket as e:
                 print(e)
                 continue
-            #print "Packet from %r: %r" % (addr,data)
+
+    def run(self):
+        while not self._stop:
+            data, addr = self._sock.recvfrom(self._mtu)
+            t = datetime.now()
+            self._pongs.append((addr[0], data, t))
 
 
 
@@ -210,7 +235,8 @@ if __name__ == '__main__':
             x.ping("annttu.fi")
             x.ping("koti.annttu.fi")
             x.ping("lakka.kapsi.fi")
-            time.sleep(1)
+            x._prosess_pongs()
+            time.sleep(0.5)
     except KeyboardInterrupt:
         if x:
             x.stop()
