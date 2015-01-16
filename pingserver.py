@@ -11,6 +11,13 @@ import time
 import math
 import logging
 
+# Some definitions from limits.h
+# Thanks to struct to not include these....
+
+SHRT_MIN = -0x8000
+SHRT_MAX = 0x7FFF
+
+
 logger = logging.getLogger("PingServer")
 
 
@@ -155,6 +162,8 @@ class PingServer(threading.Thread):
             seq = 1
         else:
             seq = self._seqs[id][-1] + 1
+            if seq > SHRT_MAX:
+                seq = SHRT_MIN
         self._seqs[id].append(seq)
         return (id, seq)
 
