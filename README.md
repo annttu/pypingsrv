@@ -5,7 +5,15 @@ Pure Python ping server.
 
 ## Usage
 
-TODO
+	from pingserver import PingServer
+	
+    x = PingServer()
+    x.start()
+    x.ping("example.com", interval=1,
+           on_packetloss=my_on_packetloss_handler,
+    	   on_response=my_on_success_handler)
+    while True:
+        time.sleep(9999999)
 
 ## Author
 
