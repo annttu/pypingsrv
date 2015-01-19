@@ -5,7 +5,7 @@ Pure Python ping server.
 
 ## Usage
 
-	from pingserver import PingServer
+	from pypingsrv import PingServer
 	
     x = PingServer()
     x.start()
