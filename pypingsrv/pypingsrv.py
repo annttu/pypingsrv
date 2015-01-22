@@ -255,6 +255,10 @@ class PingServer(threading.Thread):
         return ip
 
     def stop(self):
+        """
+        Stop ping server and all it child threads. Should be called on exit.
+        :return:
+        """
         self._stop = True
         for t in self._subthreads.values():
             t.stop()

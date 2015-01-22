@@ -14,6 +14,16 @@ Using pip
 
 See example.py for example usage.
 
+### PingServer Functions
+
+```start()``` start ping server threads. Have to be called once in the begining.
+
+```ping(destination, interval, on_packetloss, on_response)``` start pinging destination with interval `interval`, ```on_packetloss``` and ```on_response``` functions described in callback functions section.
+
+```stop_ping(destination)``` Interrupt and stop pinging ```destination```.
+
+```stop()``` Stops ping server threads. Should be called on exit.
+
 ### Callback functions
 
 ```on_response(destination, data)``` callback function gets two arguments.
