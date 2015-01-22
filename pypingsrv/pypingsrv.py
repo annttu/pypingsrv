@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import socket
 import os
+import sys
 import struct
 import threading
 import random
@@ -17,6 +18,8 @@ import logging
 SHRT_MIN = -0x8000
 SHRT_MAX = 0x7FFF
 
+def python3():
+    return sys.version_info>=(3,0,0)
 
 logger = logging.getLogger("PingServer")
 
@@ -64,7 +67,7 @@ class Cache(object):
 
 
 def make_pattern(pattern, length):
-    return str(pattern * int(math.ceil(length / float(len(pattern)))))[:length]
+    return str(pattern * int(math.ceil(length / float(len(pattern)))))[:length].encode("utf-8")
 
 
 class PingEventHandlers(object):
@@ -193,7 +196,10 @@ class PingServer(threading.Thread):
         count_to = len(string) & -2
         count = 0
         while count < count_to:
-            this_val = ord(string[count + 1]) * 256 + ord(string[count])
+            if python3():
+                this_val = string[count + 1] * 256 + string[count]
+            else:
+                this_val = ord(string[count + 1]) * 256 + ord(string[count])
             checksum += this_val
             checksum &= 0xffffffff  # Necessary?
             count += 2
@@ -407,5 +413,6 @@ if __name__ == '__main__':
         if x:
             x.stop()
     except Exception:
+        logger.exception("Unhandled exception e")
         if x:
             x.stop()
