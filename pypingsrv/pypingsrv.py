@@ -152,7 +152,7 @@ class PingServer(threading.Thread):
         self._timeouts = {}
         self._pongs = []
         self._event_handlers = {}
-        self._subthreads = []
+        self._subthreads = {}
         self._cache = Cache()
 
     def _get_next(self, destination):
@@ -256,7 +256,7 @@ class PingServer(threading.Thread):
 
     def stop(self):
         self._stop = True
-        for t in self._subthreads:
+        for t in self._subthreads.values():
             t.stop()
 
     def _create_socket(self):
@@ -270,7 +270,6 @@ class PingServer(threading.Thread):
         #self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
         #self._sock.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
 
-
     def _send(self, destination):
         """
         Send ICMP packet to destination
@@ -281,12 +280,14 @@ class PingServer(threading.Thread):
         id, seq = self._get_next(destination)
         packet = self._pack_packet(id, seq)
         t = datetime.now()
+        self._results_lock.acquire()
         try:
             self._sock.sendto(packet, (ip, 1))
         except socket.error:
             logging.exception("Cannot send ping packet")
+            self._results_lock.release()
+            return None
         self._sent_packets[(ip, id, seq)] = seq
-        self._results_lock.acquire()
         if destination not in self._results:
             self._results[destination] = {}
         self._results[destination][seq] = ResultData(t)
@@ -304,17 +305,38 @@ class PingServer(threading.Thread):
         :param on_response: function to call when packet received
         :return:
         """
+        if destination in self._timeouts:
+            raise ValueError("Destination %s already added" % destination)
         if on_packetloss is not None and type(on_packetloss) != function:
             raise ValueError("on_packetloss should be function")
         if on_response is not None and type(on_response) != function:
             raise ValueError("on_response should be function")
         t = PingerThread(self, destination, interval, count)
         t.start()
-        self._subthreads.append(t)
+        self._subthreads[destination] = t
         self._event_handlers[destination] = PingEventHandlers()
         self._event_handlers[destination].on_packetloss = on_packetloss
         self._event_handlers[destination].on_response = on_response
         self._timeouts[destination] = timeout
+
+    def stop_ping(self, destination):
+        """
+        Stop pinging destination
+        :param destination: destination address, must be same as when added
+        :return: None
+        """
+        if destination not in self._subthreads:
+            return
+        self._subthreads[destination].stop()
+        self._subthreads[destination].join()
+        del self._subthreads[destination]
+        self._results_lock.acquire()
+        del self._results[destination]
+        id = self._ids[destination]
+        del self._seqs[id]
+        del self._ids[destination]
+        self._results_lock.release()
+        return None
 
     def trigger_ping(self, destination):
         """
@@ -342,6 +364,10 @@ class PingServer(threading.Thread):
                     continue
 
                 destination = self._get_destination(x['id'])
+                if x['seq'] not in self._results[destination]:
+                    logging.debug("Unknown sequence %s for host %s" % (x['seq'], destination))
+                    self._results_lock.release()
+                    continue
                 resultdata = self._results[destination][x['seq']]
                 diff = recv_time - resultdata.sent
                 diff = ((diff.seconds * 1000000.0) + diff.microseconds) / 1000.0
@@ -357,6 +383,7 @@ class PingServer(threading.Thread):
                         logging.error("on_success handler for %s returned error" % destination)
                 # Remove result from dict
                 del self._results[destination][x['seq']]
+                del self._sent_packets[identifier]
                 logger.debug("%s: %s" % (addr, x))
             except InvalidPacket:
                 logger.exception("Invalid packet received")
@@ -365,7 +392,6 @@ class PingServer(threading.Thread):
             self._results_lock.release()
 
     def _timeout_clear(self):
-        # TODO: clear self._sent_packets
         for key in self._seqs.keys():
             if len(self._seqs[key]) > 1000:
                 self._seqs[key] = self._seqs[key][-1000:]
@@ -391,14 +417,22 @@ class PingServer(threading.Thread):
                         logging.error("on_packetloss handler for %s returned error" % destination)
             for seq in to_delete:
                 # Delete reported
+                ip = self._get_ip(destination)
+                id = self._ids[destination]
+                identifier = (ip, id, seq)
+                if identifier in self._sent_packets:
+                    del self._sent_packets[identifier]
+                else:
+                    logging.debug("Packet is not sent??")
                 del self._results[destination][seq]
+
 
         self._results_lock.release()
 
     def run(self):
         t = PongThread(self)
         t.start()
-        self._subthreads.append(t)
+        self._subthreads['pong thread'] = t
         while not self._stop:
             data, addr = self._sock.recvfrom(self._mtu)
             t = datetime.now()
