@@ -6,7 +6,7 @@ long_description = "Pure Python ping server with event handlers"
 
 
 setup(name='pypingsrv',
-      version='0.1',
+      version='0.2',
       description="Pure Python ping server",
       long_description=long_description,
       classifiers=[],
