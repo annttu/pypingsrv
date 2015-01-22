@@ -11,24 +11,16 @@ Using pip
 
 ## Usage
 
-    from pypingsrv import PingServer
 
-    x = PingServer()
-    x.start()
-    x.ping("example.com", interval=1,
-           on_packetloss=my_on_packetloss_handler,
-    	   on_response=my_on_success_handler)
-    while True:
-        time.sleep(9999999)
-
-See example.py for more information.
+See example.py for example usage.
 
 ### Callback functions
 
 ```on_response(destination, data)``` callback function gets two arguments.
 
 1. destination is ping destination as given to ping function.
-2. data is dictionary containing information about packet. data fields are code, seq, checksum, time, type and id.
+2. data is dictionary containing information about packet. data fields are code: int, seq: int, checksum: int, time: float (in ms), type: int and id: int.
+
 
 ```on_packetloss(destination, timestamp)``` callback function gets two arguments.
 
