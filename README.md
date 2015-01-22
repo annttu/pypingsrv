@@ -25,11 +25,13 @@ See example.py for more information.
 
 ### Callback functions
 
-on\_response callback function gets two arguments.
+```on_response(destination, data)``` callback function gets two arguments.
+
 1. destination is ping destination as given to ping function.
 2. data is dictionary containing information about packet. data fields are code, seq, checksum, time, type and id.
 
-on\_packetloss callback function gets two arguments.
+```on_packetloss(destination, timestamp)``` callback function gets two arguments.
+
 1. destination is ping destination as given to ping function.
 2. timestamp is timestamp when packetloss have occured.
 
