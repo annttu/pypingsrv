@@ -3,6 +3,12 @@
 
 Pure Python ping server.
 
+## Installation
+
+Using pip
+
+    pip install --find-links http://code.annttu.fi/pip pypingsrv
+
 ## Usage
 
 	from pypingsrv import PingServer
