@@ -280,7 +280,11 @@ class PingServer(threading.Thread):
         :param destination:
         :return: packet sequence number
         """
-        ip = self._get_ip(destination)
+        try:
+            ip = self._get_ip(destination)
+        except NotSuchHost:
+            logging.exception("Cannot send ping packet")
+            return None
         id, seq = self._get_next(destination)
         packet = self._pack_packet(id, seq)
         t = datetime.now()
