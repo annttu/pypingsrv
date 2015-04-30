@@ -1,5 +1,6 @@
 # PyPingSrv
 
+[![Build Status](https://drone.io/github.com/annttu/pypingsrv/status.png)](https://drone.io/github.com/annttu/pypingsrv/latest)
 
 Pure Python ping server.
 
